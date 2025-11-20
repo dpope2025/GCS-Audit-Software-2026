@@ -242,12 +242,13 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({ onSave, onCancel, exis
                 <div className="absolute inset-0 z-0">
                     {backgroundDataUrl ? (
                         backgroundType === 'pdf' ? (
-                            <iframe 
-                                src={backgroundDataUrl} 
-                                width="100%" 
-                                height="100%" 
-                                className="w-full h-full border-none pointer-events-none" 
-                                title="Background PDF" 
+                            <embed
+                                src={backgroundDataUrl}
+                                type="application/pdf"
+                                width="100%"
+                                height="100%"
+                                className="w-full h-full pointer-events-none"
+                                title="Background PDF"
                             />
                         ) : (
                             <img src={backgroundDataUrl} alt="Form Background" className="w-full h-full object-contain pointer-events-none" />

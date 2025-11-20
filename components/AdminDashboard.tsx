@@ -27,6 +27,7 @@ const FileTextIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" he
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
 const EyeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>;
 const DownloadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>;
+const AlertTriangleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>;
 
 interface AdminPortalProps {
   audits: Audit[];
@@ -54,6 +55,7 @@ const AdminPortal: React.FC<AdminPortalProps> = (props) => {
   const [isFormBuilderOpen, setIsFormBuilderOpen] = useState(false);
   const [editingFormId, setEditingFormId] = useState<string | null>(null);
   const [previewFormId, setPreviewFormId] = useState<string | null>(null);
+  const [formToDelete, setFormToDelete] = useState<FormTemplate | null>(null);
 
   // Add Auditor State
   const [newAuditorName, setNewAuditorName] = useState('');
@@ -263,10 +265,15 @@ const AdminPortal: React.FC<AdminPortalProps> = (props) => {
       setPreviewFormId(formId);
       setIsFormBuilderOpen(true);
   };
+  
+  const handleDeleteForm = (form: FormTemplate) => {
+      setFormToDelete(form);
+  };
 
-  const handleDeleteForm = (formId: string) => {
-      if (window.confirm('Are you sure you want to delete this form?')) {
-          setCustomForms(prev => prev.filter(f => f.id !== formId));
+  const confirmDeleteForm = () => {
+      if (formToDelete) {
+          setCustomForms(prev => prev.filter(f => f.id !== formToDelete.id));
+          setFormToDelete(null);
       }
   };
   
@@ -479,7 +486,7 @@ const AdminPortal: React.FC<AdminPortalProps> = (props) => {
                                            <button onClick={() => handleEditForm(form.id)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded text-xs font-medium flex items-center gap-1" title="Edit Form">
                                                <EditIcon/> Edit
                                            </button>
-                                           <button onClick={() => handleDeleteForm(form.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded text-xs font-medium flex items-center gap-1" title="Delete Form">
+                                           <button onClick={() => handleDeleteForm(form)} className="p-1.5 text-red-600 hover:bg-red-100 rounded text-xs font-medium flex items-center gap-1" title="Delete Form">
                                                <TrashIcon/> Delete
                                            </button>
                                        </div>
@@ -750,7 +757,7 @@ const AdminPortal: React.FC<AdminPortalProps> = (props) => {
             </div>
         )}
 
-        {/* Delete Confirmation Modal */}
+        {/* Delete Auditor Confirmation Modal */}
         {auditorToDelete && (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
                 <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
@@ -761,6 +768,31 @@ const AdminPortal: React.FC<AdminPortalProps> = (props) => {
                     <div className="flex justify-end gap-3">
                         <button type="button" onClick={() => setAuditorToDelete(null)} className="bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-lg hover:bg-gray-300">Cancel</button>
                         <button type="button" onClick={confirmDeleteAuditor} className="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700">Delete</button>
+                    </div>
+                </div>
+            </div>
+        )}
+        
+        {/* Delete Form Confirmation Modal */}
+        {formToDelete && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
+                <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+                    <div className="flex items-center gap-3 mb-4 text-red-600">
+                        <AlertTriangleIcon />
+                        <h3 className="text-xl font-bold">Warning: Delete Form?</h3>
+                    </div>
+                    <p className="text-text-secondary mb-2">
+                        You are about to permanently delete the form template:
+                    </p>
+                    <p className="text-text-primary font-semibold text-lg mb-6 bg-gray-50 p-2 rounded border text-center">
+                        {formToDelete.title}
+                    </p>
+                    <p className="text-sm text-red-500 font-medium mb-6">
+                        This action cannot be undone. Any data associated with this template will remain, but the template itself will be lost.
+                    </p>
+                    <div className="flex justify-end gap-3">
+                        <button type="button" onClick={() => setFormToDelete(null)} className="bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors">Cancel</button>
+                        <button type="button" onClick={confirmDeleteForm} className="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition-colors shadow-md">Confirm Delete</button>
                     </div>
                 </div>
             </div>
