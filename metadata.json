@@ -1,0 +1,5 @@
+{
+  "name": "GCS AuditSync Portal Rev005",
+  "description": "An intelligent application for conducting ISO 9001, 14001, and 45001 management system audits. Clients can upload evidence for each clause, and auditors can use AI-powered tools to generate audit questions and insights.",
+  "requestFramePermissions": []
+}
