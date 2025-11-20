@@ -175,6 +175,11 @@ const App: React.FC = () => {
                 auditors={auditors}
                 setAuditors={setAuditors}
                 onUpdateAudit={handleUpdateAudit}
+                onCreateAudit={handleCreateAudit}
+                onDeleteAudit={handleDeleteAudit}
+                onSelectAudit={setCurrentViewedAuditId}
+                workflows={workflows}
+                userRole={userRole}
             />
         );
     }

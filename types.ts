@@ -168,9 +168,12 @@ export interface Audit {
   clientRepName?: string;
   clientRepEmail?: string;
   clientRepTitle?: string;
-  assignedAuditor: string;
+  assignedAuditor: string; // Primary auditor for backward compatibility
+  assignedAuditors?: string[]; // List of all assigned auditors
   dueDate: string;
-  standardId: ISOStandardID;
+  standardId: ISOStandardID; // Primary standard for workflow
+  standards?: string[]; // List of applicable standards
+  accreditationType?: 'IAS' | 'GCS';
   currentStage: AuditStage;
   customClauses: Clause[]; // For auditor-added questions
   clauseOrder?: string[]; // To store custom ordering

@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
-import { ApplicationReview, Auditor, Audit } from '../types';
+import { Auditor, Audit, Workflow, UserRole } from '../types';
 // FIX: Module './ApplicationApprovalForm' has no default export. Changed to named import.
-import { ApplicationApprovalForm } from './ApplicationApprovalForm';
+// import { ApplicationApprovalForm } from './ApplicationApprovalForm'; // Replaced by ClientManager
 import { ActionManager } from './ActionManager';
+import ClientManager from './ClientManager';
 
 // Inlined Icons
 const LayoutGridIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>;
@@ -17,14 +18,26 @@ interface ApplicationReviewerDashboardProps {
     setAuditors: (auditors: Auditor[] | ((val: Auditor[]) => Auditor[])) => void;
     audits: Audit[];
     onUpdateAudit: (audit: Audit) => void;
+    onCreateAudit: (audit: Audit) => void;
+    onDeleteAudit: (auditId: string) => void;
+    onSelectAudit: (auditId: string) => void;
+    workflows: Workflow[];
+    userRole: UserRole;
 }
 
-const ApplicationReviewerDashboard: React.FC<ApplicationReviewerDashboardProps> = ({ auditors, setAuditors, audits, onUpdateAudit }) => {
-  const [activeTab, setActiveTab] = useState<'application_review' | 'quotations' | 'actions' | 'settings'>('application_review');
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [reviews, setReviews] = useState<ApplicationReview[]>([]);
-  const [viewingPdf, setViewingPdf] = useState<string | null>(null);
-
+const ApplicationReviewerDashboard: React.FC<ApplicationReviewerDashboardProps> = ({ 
+    auditors, 
+    setAuditors, 
+    audits, 
+    onUpdateAudit,
+    onCreateAudit,
+    onDeleteAudit,
+    onSelectAudit,
+    workflows,
+    userRole
+}) => {
+  const [activeTab, setActiveTab] = useState<'client_management' | 'quotations' | 'actions' | 'settings'>('client_management');
+  
   // User/Profile State
   const currentUser = auditors[0];
   const [profileName, setProfileName] = useState(currentUser?.name || '');
@@ -43,14 +56,6 @@ const ApplicationReviewerDashboard: React.FC<ApplicationReviewerDashboardProps> 
       return count;
   }, [audits]);
 
-  const handleSaveReview = (review: ApplicationReview) => {
-    setReviews(prev => [...prev, review]);
-    setIsFormOpen(false);
-  };
-  
-  const handleCloseForm = () => {
-    setIsFormOpen(false);
-  };
 
   const handleSaveSettings = () => {
       const updatedAuditors = [...auditors];
@@ -78,51 +83,28 @@ const ApplicationReviewerDashboard: React.FC<ApplicationReviewerDashboardProps> 
   };
 
   const sections = [
-      { id: 'application_review', title: 'Application Review', icon: <LayoutGridIcon /> },
+      { id: 'client_management', title: 'Client Management', icon: <LayoutGridIcon /> },
       { id: 'quotations', title: 'Quotations', icon: <FileTextIcon /> },
       { id: 'actions', title: 'Admin Request', icon: <ClipboardListIcon /> },
       { id: 'settings', title: 'Settings', icon: <SettingsIcon /> },
   ];
 
   const renderMainContent = () => {
-      if (activeTab === 'application_review') {
+      if (activeTab === 'client_management') {
           return (
             <div>
-              <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-2xl font-bold text-text-primary">Manage Application Reviews</h3>
-                  <button
-                      className="bg-brand-primary text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-brand-accent transition-colors"
-                      onClick={() => setIsFormOpen(true)}
-                  >
-                      + New Application Review
-                  </button>
-              </div>
-              {reviews.length === 0 ? (
-                  <div className="text-center py-16 bg-gray-50 rounded-lg mt-4 border border-dashed">
-                      <LayoutGridIcon />
-                      <h4 className="mt-4 text-lg font-semibold text-text-secondary">No Application Reviews Found</h4>
-                      <p className="mt-1 text-gray-500">Click "New Application Review" to get started.</p>
-                  </div>
-              ) : (
-                  <div className="mt-4 space-y-3">
-                      {reviews.map(review => (
-                          <div key={review.id} className="p-4 border rounded-lg flex items-center justify-between hover:bg-gray-50 bg-white shadow-sm">
-                              <div>
-                                  <p className="font-semibold text-brand-primary">{review.companyName}</p>
-                                  <p className="text-sm text-text-secondary">Reviewed on: {new Date(review.createdAt).toLocaleDateString()}</p>
-                              </div>
-                              <div className="flex items-center gap-4">
-                                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${review.decision === 'Application Approved' ? 'bg-green-100 text-green-800' : review.decision === 'Application Declined' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
-                                      {review.decision || 'Pending'}
-                                  </span>
-                                  {review.pdfDataUri && (
-                                       <button onClick={() => setViewingPdf(review.pdfDataUri)} className="bg-blue-600 text-white font-semibold py-1 px-3 rounded-lg text-sm hover:bg-blue-700">View PDF</button>
-                                  )}
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-              )}
+                <h2 className="text-2xl font-bold text-text-primary mb-4">Manage Clients</h2>
+                <p className="text-text-secondary mb-6">Review and add new clients to the system.</p>
+                <ClientManager 
+                    audits={audits}
+                    auditors={auditors}
+                    workflows={workflows}
+                    onSelectAudit={onSelectAudit}
+                    onCreateAudit={onCreateAudit}
+                    onUpdateAudit={onUpdateAudit}
+                    onDeleteAudit={onDeleteAudit}
+                    userRole={userRole}
+                />
             </div>
           );
       }
@@ -252,26 +234,6 @@ const ApplicationReviewerDashboard: React.FC<ApplicationReviewerDashboardProps> 
                 {renderMainContent()}
             </main>
         </div>
-
-      <ApplicationApprovalForm 
-        isOpen={isFormOpen}
-        onClose={handleCloseForm}
-        onSave={handleSaveReview}
-        auditors={auditors}
-      />
-
-      {viewingPdf && (
-          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4" onClick={() => setViewingPdf(null)}>
-              <div className="bg-white p-2 rounded-lg shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                  <div className="flex justify-end pb-2">
-                       <button onClick={() => setViewingPdf(null)} className="text-gray-500 hover:text-gray-800 text-3xl font-bold leading-none">&times;</button>
-                  </div>
-                  <div className="flex-grow">
-                      <iframe src={viewingPdf} className="w-full h-full border-none" title="Application Review PDF"></iframe>
-                  </div>
-              </div>
-          </div>
-      )}
     </div>
   );
 };

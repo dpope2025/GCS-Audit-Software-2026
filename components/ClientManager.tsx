@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Audit, Auditor, AuditorStatus, AuditStage, Workflow, ClientStatus, UserRole } from '../types';
+import { Audit, Auditor, AuditorStatus, AuditStage, Workflow, ClientStatus, UserRole, AuditorDocument } from '../types';
 import { ISOStandardID } from '../constants';
 import ProgressBar from './ProgressBar';
 import { ISO_STANDARDS, ALL_AUDIT_STAGES, CLIENT_STATUS_CONFIG, IAF_CODES } from '../constants';
@@ -9,6 +10,9 @@ const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height
 const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
 const InfoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>;
 const AlertTriangleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>;
+const UploadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>;
+const FileIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>;
+
 
 interface ClientManagerProps {
   audits: Audit[];
@@ -22,6 +26,8 @@ interface ClientManagerProps {
 }
 
 const CLIENTS_PER_PAGE = 6;
+
+const GCS_TRIGGER_CODES = ['1', '2', '3', '4', '5', '6', '11', '23', '24', '25', '26', '27', '30', '31', '38', '39'];
 
 const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
@@ -120,7 +126,11 @@ const PaginatedClientTable: React.FC<{
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{audit.assignedAuditor}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">
+                                        {audit.assignedAuditors && audit.assignedAuditors.length > 0 
+                                            ? audit.assignedAuditors.join(', ') 
+                                            : audit.assignedAuditor}
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                                         <span className={getDueDateClass(audit.dueDate)}>
                                             {formatDate(audit.dueDate)}
@@ -173,9 +183,9 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
   const [statusFilter, setStatusFilter] = useState<ClientStatus | 'all'>('all');
   const [viewingClientInfo, setViewingClientInfo] = useState<Audit | null>(null);
 
-  const initialFormState: Omit<Audit, 'id' | 'createdAt' | 'statuses' | 'customClauses'> & { id?: string } = {
+  const initialFormState: Omit<Audit, 'id' | 'createdAt' | 'statuses' | 'customClauses' | 'assignedAuditors' | 'standards' | 'accreditationType'> & { id?: string } = {
     clientName: '', clientAddress: '', clientLogo: undefined, clientRepName: '', clientRepEmail: '', clientRepTitle: '',
-    assignedAuditor: auditors[0]?.name || '',
+    assignedAuditor: auditors[0]?.name || '', // Fallback default
     dueDate: '', standardId: ISOStandardID.ISO9001, currentStage: AuditStage.Stage1, status: ClientStatus.InProgress,
     scope: '', iafCodes: [], certificateNumber: '',
   };
@@ -183,25 +193,15 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
   const [formState, setFormState] = useState(initialFormState);
   const [logoFileName, setLogoFileName] = useState<string>('');
   
-  const iafCodesRef = useRef<HTMLSelectElement>(null);
+  // New state for multi-selects and uploads
+  const [selectedAssignedAuditors, setSelectedAssignedAuditors] = useState<string[]>([]);
   const [selectedIafCodes, setSelectedIafCodes] = useState<string[]>([]);
-  
-  useEffect(() => {
-    if (iafCodesRef.current) {
-        const select = iafCodesRef.current;
-        const options = Array.from(select.options);
-        // FIX: Cast `opt` to HTMLOptionElement to resolve TypeScript error on `selected` and `value` properties.
-        options.forEach(opt => {
-            (opt as HTMLOptionElement).selected = selectedIafCodes.includes((opt as HTMLOptionElement).value);
-        });
-    }
-  }, [selectedIafCodes]);
-  
-  const handleIafCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-      // FIX: Cast `opt` to HTMLOptionElement to resolve TypeScript error on `value` property.
-      const selectedOptions = Array.from(e.target.selectedOptions).map(opt => (opt as HTMLOptionElement).value);
-      setSelectedIafCodes(selectedOptions);
-  }
+  const [selectedStandards, setSelectedStandards] = useState<string[]>([]);
+  const [selectedAccreditation, setSelectedAccreditation] = useState<'IAS' | 'GCS' | undefined>('IAS');
+  const [applicationForms, setApplicationForms] = useState<File[]>([]);
+
+  // Ref for file input
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const openModal = (auditToEdit: Audit | null) => {
     setEditingAudit(auditToEdit);
@@ -212,10 +212,17 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
       });
       setLogoFileName(''); // Don't show old filename when editing
       setSelectedIafCodes(auditToEdit.iafCodes || []);
+      setSelectedAssignedAuditors(auditToEdit.assignedAuditors || (auditToEdit.assignedAuditor ? [auditToEdit.assignedAuditor] : []));
+      setSelectedStandards(auditToEdit.standards || [auditToEdit.standardId]);
+      setSelectedAccreditation(auditToEdit.accreditationType);
     } else {
       setFormState(initialFormState);
       setLogoFileName('');
       setSelectedIafCodes([]);
+      setSelectedAssignedAuditors([]);
+      setSelectedStandards([ISOStandardID.ISO9001]);
+      setSelectedAccreditation('IAS'); // Default to IAS
+      setApplicationForms([]);
     }
     setIsModalOpen(true);
   };
@@ -226,6 +233,10 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
     setFormState(initialFormState);
     setLogoFileName('');
     setSelectedIafCodes([]);
+    setSelectedAssignedAuditors([]);
+    setSelectedStandards([]);
+    setSelectedAccreditation('IAS');
+    setApplicationForms([]);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -245,23 +256,121 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleApplicationFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+          const newFiles = Array.from(files);
+          setApplicationForms(prev => [...prev, ...newFiles]);
+      }
+      
+      // Reset the input value to allow selecting the same file again if needed
+      if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+      }
+  };
+
+  const handleMultiCheckboxChange = (
+      item: string, 
+      currentList: string[], 
+      setList: React.Dispatch<React.SetStateAction<string[]>>
+  ) => {
+      if (currentList.includes(item)) {
+          setList(currentList.filter(i => i !== item));
+      } else {
+          setList([...currentList, item]);
+      }
+  };
+
+  const handleIafCodeChange = (code: string) => {
+      let newCodes: string[];
+      if (selectedIafCodes.includes(code)) {
+          newCodes = selectedIafCodes.filter(c => c !== code);
+      } else {
+          newCodes = [...selectedIafCodes, code];
+      }
+      setSelectedIafCodes(newCodes);
+
+      // Check against trigger codes for auto-selection of Accreditation
+      const hasTriggerCode = newCodes.some(c => GCS_TRIGGER_CODES.includes(c));
+      if (hasTriggerCode) {
+          setSelectedAccreditation('GCS');
+      } else {
+          setSelectedAccreditation('IAS');
+      }
+  };
+
+  const handleRemoveApplicationFile = (index: number) => {
+      setApplicationForms(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    let finalFormState = {...formState, iafCodes: selectedIafCodes};
+    // Determine primary standard (fallback to first selected or default)
+    const primaryStandard = selectedStandards.length > 0 ? selectedStandards[0] as ISOStandardID : formState.standardId;
+    // Determine primary auditor (fallback to first selected)
+    const primaryAuditor = selectedAssignedAuditors.length > 0 ? selectedAssignedAuditors[0] : formState.assignedAuditor;
+
+    let finalFormState = {
+        ...formState, 
+        iafCodes: selectedIafCodes,
+        assignedAuditors: selectedAssignedAuditors,
+        standards: selectedStandards,
+        accreditationType: selectedAccreditation,
+        standardId: primaryStandard,
+        assignedAuditor: primaryAuditor
+    };
+
+    // Process Uploaded Application Forms
+    let newDocs: AuditorDocument[] = [];
+    if (applicationForms.length > 0) {
+        const filePromises = applicationForms.map(file => {
+            return new Promise<AuditorDocument>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve({
+                    id: crypto.randomUUID(),
+                    name: `Application Form - ${file.name}`,
+                    type: file.type,
+                    size: file.size,
+                    dataUrl: reader.result as string,
+                    uploadDate: new Date().toISOString(),
+                });
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        });
+        try {
+            newDocs = await Promise.all(filePromises);
+        } catch(err) {
+            console.error("Error reading application files", err);
+            alert("Failed to process uploaded application forms.");
+            return;
+        }
+    }
 
     if (editingAudit) {
-      // If we are editing, we don't want to overwrite custom clauses or statuses unless we reset.
-      // So, we merge the form state with the existing audit data.
+      const existingStageDocs = editingAudit.stageDocuments || [];
+      let updatedStageDocs = [...existingStageDocs];
+
+      if (newDocs.length > 0) {
+         // Add to Stage 1 documents by default for application forms
+         const stage1Index = updatedStageDocs.findIndex(sd => sd.stage === AuditStage.Stage1);
+         if (stage1Index >= 0) {
+             updatedStageDocs[stage1Index].documents = [...updatedStageDocs[stage1Index].documents, ...newDocs];
+         } else {
+             updatedStageDocs.push({ stage: AuditStage.Stage1, documents: newDocs });
+         }
+      }
+
       const updatedAudit: Audit = {
         ...editingAudit,
         ...finalFormState,
         dueDate: new Date(finalFormState.dueDate).toISOString(),
+        stageDocuments: updatedStageDocs
       };
       onUpdateAudit(updatedAudit);
     } else {
-      // For a new audit, generate the initial statuses based on the workflow.
-      const workflow = workflows.find(w => w.id === finalFormState.standardId);
+      const workflow = workflows.find(w => w.id === primaryStandard);
       const stage = workflow?.stages.find(s => s.stage === finalFormState.currentStage);
       const initialStatuses = stage?.clauses.map(clause => ({
         clauseId: clause.id,
@@ -271,6 +380,8 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
         auditorStatus: AuditorStatus.NotStarted,
       })) || [];
 
+      const stageDocuments = newDocs.length > 0 ? [{ stage: AuditStage.Stage1, documents: newDocs }] : [];
+
       const newAudit: Audit = {
         ...finalFormState,
         id: `audit-${crypto.randomUUID()}`,
@@ -278,6 +389,7 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
         dueDate: new Date(finalFormState.dueDate).toISOString(),
         statuses: initialStatuses,
         customClauses: [],
+        stageDocuments: stageDocuments
       };
       onCreateAudit(newAudit);
     }
@@ -450,20 +562,40 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
                   <div className="md:col-span-1 space-y-4">
                       <h4 className="text-lg font-semibold text-text-secondary border-b pb-2">Audit Details</h4>
                        <div>
-                          <label className="block text-sm font-medium text-text-secondary mb-1">Assigned Auditor*</label>
-                          <select name="assignedAuditor" value={formState.assignedAuditor} onChange={handleChange} className="w-full input-field" required>
-                              {auditors.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-                          </select>
+                          <label className="block text-sm font-medium text-text-secondary mb-1">Assigned Auditors*</label>
+                          <div className="max-h-32 overflow-y-auto border rounded-md p-2 bg-gray-50">
+                                {auditors.map(a => (
+                                    <label key={a.name} className="flex items-center space-x-2 mb-1 cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedAssignedAuditors.includes(a.name)}
+                                            onChange={() => handleMultiCheckboxChange(a.name, selectedAssignedAuditors, setSelectedAssignedAuditors)}
+                                            className="rounded border-gray-300 text-brand-primary focus:ring-brand-accent"
+                                        />
+                                        <span className="text-sm">{a.name}</span>
+                                    </label>
+                                ))}
+                          </div>
                       </div>
                       <div>
                           <label className="block text-sm font-medium text-text-secondary mb-1">Due Date*</label>
                           <input type="date" name="dueDate" value={formState.dueDate} onChange={handleChange} className="w-full input-field" required />
                       </div>
                        <div>
-                          <label className="block text-sm font-medium text-text-secondary mb-1">Standard*</label>
-                          <select name="standardId" value={formState.standardId} onChange={handleChange} className="w-full input-field" required>
-                              {ISO_STANDARDS.map(std => <option key={std.id} value={std.id}>{std.name}</option>)}
-                          </select>
+                          <label className="block text-sm font-medium text-text-secondary mb-1">Standards*</label>
+                          <div className="max-h-32 overflow-y-auto border rounded-md p-2 bg-gray-50">
+                                {ISO_STANDARDS.map(std => (
+                                    <label key={std.id} className="flex items-center space-x-2 mb-1 cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedStandards.includes(std.id)}
+                                            onChange={() => handleMultiCheckboxChange(std.id, selectedStandards, setSelectedStandards)}
+                                            className="rounded border-gray-300 text-brand-primary focus:ring-brand-accent"
+                                        />
+                                        <span className="text-sm">{std.name}</span>
+                                    </label>
+                                ))}
+                          </div>
                       </div>
                       <div>
                           <label className="block text-sm font-medium text-text-secondary mb-1">Audit Cycle Stage*</label>
@@ -490,10 +622,69 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
                       </div>
                       <div>
                            <label className="block text-sm font-medium text-text-secondary mb-1">IAF Code(s)</label>
-                           <select multiple ref={iafCodesRef} onChange={handleIafCodeChange} className="w-full input-field" style={{height: '150px'}}>
-                               {IAF_CODES.map(code => <option key={code.code} value={code.code}>{code.code} - {code.description}</option>)}
-                           </select>
+                           <div className="max-h-40 overflow-y-auto border rounded-md p-2 bg-gray-50">
+                               {IAF_CODES.map(code => (
+                                   <label key={code.code} className="flex items-start space-x-2 mb-1 cursor-pointer hover:bg-gray-100 p-1 rounded">
+                                       <input 
+                                            type="checkbox" 
+                                            checked={selectedIafCodes.includes(code.code)}
+                                            onChange={() => handleIafCodeChange(code.code)}
+                                            className="mt-1 rounded border-gray-300 text-brand-primary focus:ring-brand-accent"
+                                       />
+                                       <span className="text-xs">{code.code} - {code.description}</span>
+                                   </label>
+                               ))}
+                           </div>
+                           <div className="mt-1 text-sm text-brand-primary font-medium">
+                               Selected: {selectedIafCodes.length > 0 ? selectedIafCodes.join(', ') : 'None'}
+                           </div>
                       </div>
+                      
+                      <div className="mt-4 p-3 bg-gray-50 rounded-md border">
+                          <label className="block text-sm font-semibold text-text-primary mb-2">Accreditation Type</label>
+                          <div className="flex gap-4">
+                              <label className="flex items-center space-x-2 cursor-pointer">
+                                  <input type="radio" name="accreditation" checked={selectedAccreditation === 'IAS'} onChange={() => setSelectedAccreditation('IAS')} className="text-brand-primary focus:ring-brand-accent" />
+                                  <span className="text-sm">IAS Accredited</span>
+                              </label>
+                              <label className="flex items-center space-x-2 cursor-pointer">
+                                  <input type="radio" name="accreditation" checked={selectedAccreditation === 'GCS'} onChange={() => setSelectedAccreditation('GCS')} className="text-brand-primary focus:ring-brand-accent" />
+                                  <span className="text-sm">GCS Certified</span>
+                              </label>
+                          </div>
+                      </div>
+
+                      <div className="mt-4">
+                         <label className="block text-sm font-semibold text-text-primary mb-2">Approval & Application Forms</label>
+                         <div 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors border-gray-300"
+                         >
+                            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <UploadIcon />
+                                <p className="mb-1 text-xs text-gray-500"><span className="font-semibold">Click to upload</span> forms</p>
+                                <p className="text-xs text-gray-400">{applicationForms.length > 0 ? `${applicationForms.length} file(s) staged` : 'Required for creation'}</p>
+                            </div>
+                            <input 
+                                type="file" 
+                                multiple 
+                                onChange={handleApplicationFilesChange} 
+                                className="hidden" 
+                                ref={fileInputRef}
+                            />
+                        </div>
+                        {applicationForms.length > 0 && (
+                            <ul className="mt-2 space-y-1 text-xs text-gray-600">
+                                {applicationForms.map((f, i) => (
+                                    <li key={i} className="flex items-center justify-between bg-white p-1.5 rounded border">
+                                        <div className="flex items-center gap-1"><FileIcon /> {f.name}</div>
+                                        <button type="button" onClick={() => handleRemoveApplicationFile(i)} className="text-red-500 hover:text-red-700"><TrashIcon /></button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                      </div>
+
                   </div>
               </div>
               <div className="flex justify-between items-center mt-8 pt-4 border-t flex-shrink-0">
@@ -507,7 +698,14 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
                   </div>
                   <div className="flex gap-4">
                       <button type="button" onClick={closeModal} className="bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-lg hover:bg-gray-300">Cancel</button>
-                      <button type="submit" className="bg-brand-primary text-white font-bold py-2 px-4 rounded-lg hover:bg-brand-accent">{editingAudit ? 'Save Changes' : 'Create Audit'}</button>
+                      <button 
+                        type="submit" 
+                        disabled={!editingAudit && applicationForms.length === 0}
+                        className="bg-brand-primary text-white font-bold py-2 px-4 rounded-lg hover:bg-brand-accent disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        title={!editingAudit && applicationForms.length === 0 ? "Upload application forms to enable creation" : ""}
+                    >
+                          {editingAudit ? 'Save Changes' : 'Create Client'}
+                      </button>
                   </div>
               </div>
             </form>
@@ -555,14 +753,15 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
                 <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-4 -mr-4">
                     <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                         <InfoRow label="Client Address" value={viewingClientInfo.clientAddress} />
-                        <InfoRow label="Standard" value={viewingClientInfo.standardId} />
+                        <InfoRow label="Standard(s)" value={viewingClientInfo.standards ? viewingClientInfo.standards.join(', ') : viewingClientInfo.standardId} />
+                        <InfoRow label="Accreditation" value={viewingClientInfo.accreditationType} />
                         <div className="md:col-span-2">
                             <InfoRow label="Scope" value={<p className="whitespace-pre-wrap">{viewingClientInfo.scope}</p>} />
                         </div>
                         <InfoRow label="IAF Code(s)" value={viewingClientInfo.iafCodes?.join(', ')} />
                         <InfoRow label="Status" value={<span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${CLIENT_STATUS_CONFIG[viewingClientInfo.status]?.colors || ''}`}>{CLIENT_STATUS_CONFIG[viewingClientInfo.status]?.label}</span>} />
                         <InfoRow label="Due Date" value={formatDate(viewingClientInfo.dueDate)} />
-                        <InfoRow label="Assigned Auditor" value={viewingClientInfo.assignedAuditor} />
+                        <InfoRow label="Assigned Auditors" value={viewingClientInfo.assignedAuditors ? viewingClientInfo.assignedAuditors.join(', ') : viewingClientInfo.assignedAuditor} />
                         <InfoRow label="Certificate Number" value={viewingClientInfo.certificateNumber} />
                         <InfoRow label="Client Representative" value={`${viewingClientInfo.clientRepName} (${viewingClientInfo.clientRepTitle})`} />
                         <InfoRow label="Client Rep Email" value={viewingClientInfo.clientRepEmail} />
@@ -593,5 +792,4 @@ const ClientManager: React.FC<ClientManagerProps> = ({ audits, auditors, workflo
   );
 };
 
-// FIX: Add default export to resolve 'has no default export' error.
 export default ClientManager;
